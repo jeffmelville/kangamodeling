@@ -67,6 +67,11 @@ namespace KangaModeling.Graphics.Primitives
             return new Size(m_Width + width, m_Height + height);
         }
 
+		public Size Plus(Size size)
+		{
+			return Plus(size.Width, size.Height);
+		}
+
         #endregion
 
         #region Overrides / Overrideables

@@ -1,159 +1,564 @@
-﻿using System.Collections.Generic;
-using KangaModeling.Compiler.SequenceDiagrams;
-using KangaModeling.Compiler.SequenceDiagrams.SimpleModel;
-using KangaModeling.Graphics;
-using KangaModeling.Graphics.Primitives;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
-using System;
+using System.Text;
+using KangaModeling.Graphics;
+using KangaModeling.Compiler.SequenceDiagrams;
+using KangaModeling.Graphics.Primitives;
+using System.ComponentModel;
+using System.Collections.ObjectModel;
 
 namespace KangaModeling.Visuals.SequenceDiagrams
 {
-	public sealed class SequenceDiagramVisual : Visual
+	abstract class CellAspect
 	{
-		#region Constants
+	}
 
-		private const float c_OuterMargin = 10;
-		private const float c_InnerMargin = 10;
+	sealed class LifelineAspect : CellAspect
+	{
+		public int EnterActivationLevel { get; set; }
+		public int LeaveActivationLevel { get; set; }
+	}
 
-		#endregion
+	sealed class LifelineNameAspect : CellAspect
+	{
+		public string Name { get; set; }
+	}
 
-		#region Fields
+	enum FragmentType
+	{
+		TopLeft,
+		Top,
+		TopRight,
+		Left,
+		Right,
+		BottomLeft,
+		Bottom,
+		BottomRight,
+	}
 
-		private readonly TitleVisual m_TitleVisual;
-        private readonly IDictionary<ILifeline, ParticipantVisual> m_ParticipantVisuals = new Dictionary<ILifeline, ParticipantVisual>();
-		private readonly IList<SignalVisual> m_SignalVisuals = new List<SignalVisual>();
-	    private readonly List<ActivityVisual> m_ActivityVisuals = new List<ActivityVisual>();
+	sealed class FragmentAspect : CellAspect
+	{
+		public string Title { get; set; }
 
-	    #endregion
+		public FragmentType Type { get; set; }
+	}
 
-		#region Construction / Destruction / Initialisation
+	enum SignalType
+	{
+		Undef,
+		Inside,
+		Start,
+		End,
+	}
+
+	enum SignalDirection
+	{
+		RightToLeft,
+		LeftToRight,
+	}
+
+	sealed class SignalAspect : CellAspect
+	{
+		public string Name { get; set; }
+
+		public SignalType Type { get; set; }
+
+		public SignalDirection Direction { get; set; }
+	}
+
+	sealed class Cell
+	{
+		private readonly Grid m_Grid;
+		private readonly Dictionary<Type, CellAspect> m_Aspects = new Dictionary<Type, CellAspect>();
+
+		public Cell(Grid grid)
+		{
+			m_Grid = grid;
+		}
+
+		public void AddAspect(CellAspect cellAspect)
+		{
+			m_Aspects.Add(cellAspect.GetType(), cellAspect);
+		}
+
+		public bool HasAspect<TCellAspect>()
+		{
+			return m_Aspects.ContainsKey(typeof(TCellAspect));
+		}
+
+		public TCellAspect GetAspect<TCellAspect>() where TCellAspect : CellAspect
+		{
+			return m_Aspects[typeof(TCellAspect)] as TCellAspect;
+		}
+	}
+
+	sealed class Grid
+	{
+		private readonly List<List<Cell>> m_Rows = new List<List<Cell>>();
+
+		public int RowCount
+		{
+			get { return m_Rows.Count; }
+		}
+
+		public int ColumnCount
+		{
+			get { return (m_Rows.Count == 0) ? 0 : m_Rows[0].Count; }
+		}
+
+		public IEnumerable<Cell> GetRow(int row)
+		{
+			if (RowCount == 0) { return new Cell[0]; }
+
+			return m_Rows[row];
+		}
+
+		public IEnumerable<Cell> GetColumn(int column)
+		{
+			if (ColumnCount == 0) { return new Cell[0]; }
+
+			return m_Rows.Select(row => row.Skip(column).First());
+		}
+
+		public Cell GetCell(int row, int column)
+		{
+			return m_Rows[row][column];
+		}
+
+		public void AddRow()
+		{
+			InsertRow(RowCount);
+		}
+
+		public void InsertRow(int index)
+		{
+			var row = new List<Cell>();
+			for (int i = 0; i < ColumnCount; i++)
+			{
+				row.Add(new Cell(this));
+			}
+			m_Rows.Insert(index, row);
+		}
+
+		public void AddColumn()
+		{
+			InsertColumn(ColumnCount);
+		}
+
+		public void InsertColumn(int index)
+		{
+			foreach (var row in m_Rows)
+			{
+				row.Insert(index, new Cell(this));
+			}
+		}
+	}
+
+	public class SequenceDiagramVisual : Visual
+	{
+		readonly Grid m_Grid = new Grid();
 
 		public SequenceDiagramVisual(ISequenceDiagram sequenceDiagram)
 		{
-			if (!string.IsNullOrEmpty(sequenceDiagram.Root.Title))
-			{
-                m_TitleVisual = new TitleVisual(sequenceDiagram.Root.Title);
-				AddChild(m_TitleVisual);
-			}
+			bool rowsAdded = false;
 
-			int participantIndex = 0;
 			foreach (var lifeline in sequenceDiagram.Lifelines)
 			{
-                var participantVisual = new ParticipantVisual(lifeline, participantIndex++);
-                m_ParticipantVisuals.Add(lifeline, participantVisual);
-				AddChild(participantVisual);
+				if (!rowsAdded)
+				{
+					int rowsToAdd = lifeline.Pins.Count();
+					while (--rowsToAdd >= 0)
+					{
+						m_Grid.AddRow();
+					}
+
+					rowsAdded = true;
+				}
+
+				m_Grid.AddColumn();
 			}
 
-			foreach (var signal in sequenceDiagram.Signals())
+			foreach (var lifeline in sequenceDiagram.Lifelines)
 			{
-				var signalVisual = new SignalVisual(
-					m_ParticipantVisuals[signal.Start.Lifeline],
-					m_ParticipantVisuals[signal.End.Lifeline],
-					signal.SignalType,
-					signal.Name);
-				m_SignalVisuals.Add(signalVisual);
-				AddChild(signalVisual);
+				int lastActivationLevel = 0;
+				foreach (var pin in lifeline.Pins)
+				{
+					var cell = m_Grid.GetCell(pin.RowIndex, lifeline.Index);
+
+					cell.AddAspect(new LifelineAspect()
+					{
+						EnterActivationLevel = lastActivationLevel,
+						LeaveActivationLevel = pin.Level,
+					});
+
+					lastActivationLevel = pin.Level;
+
+					if (pin.Signal != null)
+					{
+						SignalDirection signalDirection = (pin.Signal.Start.LifelineIndex > pin.Signal.End.LifelineIndex)
+							? SignalDirection.RightToLeft
+							: SignalDirection.LeftToRight;
+
+						SignalType signalType = SignalType.Undef;
+						if (pin.Signal.Start == pin)
+						{
+							signalType = SignalType.Start;
+
+							int startColumn, endColumn;
+							if (signalDirection == SignalDirection.LeftToRight)
+							{
+								startColumn = pin.Signal.Start.LifelineIndex + 1;
+								endColumn = pin.Signal.End.LifelineIndex;
+							}
+							else
+							{
+								startColumn = pin.Signal.End.LifelineIndex + 1;
+								endColumn = pin.Signal.Start.LifelineIndex;
+							}
+
+							for (int column = startColumn; column < endColumn; column++)
+							{
+								Cell cellInside = m_Grid.GetCell(pin.RowIndex, column);
+								cellInside.AddAspect(new SignalAspect()
+								{
+									Direction = signalDirection,
+									Type = SignalType.Inside,
+									Name = pin.Signal.Name,
+								});
+							}
+						}
+						else if (pin.Signal.End == pin)
+						{
+							signalType = SignalType.End;
+						}
+
+						cell.AddAspect(new SignalAspect()
+						{
+							Name = pin.Signal.Name,
+							Direction = signalDirection,
+							Type = signalType,
+						});
+					}
+				}
 			}
 
-		    foreach (var activity in sequenceDiagram.Activities())
-		    {
-		        var activityVisual = new ActivityVisual(activity);
-		        m_ActivityVisuals.Add(activityVisual);
-                AddChild(activityVisual);
-		    }
+			bool nameRowsAdded = false;
 
-			AutoSize = true;
+			foreach (var lifeline in sequenceDiagram.Lifelines)
+			{
+				if (!nameRowsAdded)
+				{
+					m_Grid.InsertRow(0);
+					m_Grid.AddRow();
+					nameRowsAdded = true;
+				}
+
+				{
+					var cell = m_Grid.GetCell(0, lifeline.Index);
+					cell.AddAspect(new LifelineNameAspect()
+					{
+						Name = lifeline.Name,
+					});
+				}
+
+				{
+					var cell = m_Grid.GetCell(m_Grid.RowCount - 1, lifeline.Index);
+					cell.AddAspect(new LifelineNameAspect()
+					{
+						Name = lifeline.Name,
+					});
+				}
+			}
+
+			InsertFragmentCells(sequenceDiagram.Root, 0, 1);
 		}
 
-		#endregion
+		private void InsertFragmentCells(IFragment fragment, int leftOffset, int topOffset)
+		{
+			if (m_Grid.RowCount == 0)
+			{
+				return;
+			}
 
-		#region Overrides / Overrideables
+			int topRowIndex = fragment.Top + topOffset;
+			int bottomRowIndex = fragment.Bottom + 1 + topOffset;
+
+			m_Grid.InsertRow(topRowIndex);
+			m_Grid.InsertRow(bottomRowIndex);
+
+			int leftColumnIndex = (fragment.Left != null) ? fragment.Left.Index + leftOffset : 0;
+			int rightColumnIndex = (fragment.Right != null) ? fragment.Right.Index + 2 + leftOffset : 0;
+
+			m_Grid.InsertColumn(leftColumnIndex);
+			m_Grid.InsertColumn(rightColumnIndex);
+
+			{
+				Cell cell = m_Grid.GetCell(topRowIndex, leftColumnIndex);
+				cell.AddAspect(new FragmentAspect()
+				{
+					Title = fragment.Title,
+					Type = FragmentType.TopLeft,
+				});
+			}
+
+			for (int column = leftColumnIndex + 1; column < rightColumnIndex; column++)
+			{
+				Cell cell = m_Grid.GetCell(topRowIndex, column);
+				cell.AddAspect(new FragmentAspect()
+				{
+					Type = FragmentType.Top,
+				});
+			}
+
+			foreach (var childFragment in fragment.Children)
+			{
+				InsertFragmentCells(childFragment, leftOffset + 1, topOffset + 1);
+			}
+		}
+
+		IDictionary<int, float> RowHeights { get; set; }
+
+		IDictionary<int, float> ColumnWidths { get; set; }
 
 		protected override void ArrangeCore(IGraphicContext graphicContext)
 		{
-			float x = c_OuterMargin, y = c_OuterMargin;
+			RowHeights = new Dictionary<int, float>();
 
-			if (m_TitleVisual != null)
+			for (int row = 0; row < m_Grid.RowCount; row++)
 			{
-				m_TitleVisual.Location = new Point(x, y);
-				y += m_TitleVisual.Height;
+				var cellsInRow = m_Grid.GetRow(row).ToArray();
+
+				float rowHeight = cellsInRow
+					.Select(c => GetRequiredHeight(c, graphicContext))
+					.Max();
+
+				RowHeights.Add(row, rowHeight);
 			}
 
-			float maximumParticipantNameHeight = 0;
+			ColumnWidths = new Dictionary<int, float>();
 
-			foreach (var participantVisual in m_ParticipantVisuals.Values)
+			for (int column = m_Grid.ColumnCount - 1; column >= 0; column--)
 			{
-				participantVisual.Location = new Point(x, y);
-				participantVisual.Width = participantVisual.NameSize.Width + c_InnerMargin;
+				var cellsInColumn = m_Grid.GetColumn(column).ToArray();
 
-				x += participantVisual.Size.Width;
-				
-				maximumParticipantNameHeight = Math.Max(
-					participantVisual.NameSize.Height, 
-					maximumParticipantNameHeight);
+				float columnWidth = cellsInColumn
+					.Select(c => GetRequiredWidth(c, graphicContext))
+					.Max();
+
+				ColumnWidths.Add(column, columnWidth);
 			}
 
-			y += maximumParticipantNameHeight;
-			y += c_InnerMargin;
-
-			foreach (var signalVisual in m_SignalVisuals)
-			{
-				x = signalVisual.LeftParticipantVisual.CenterX;
-
-				EnsureParticipantIsAtLeastAt(
-					signalVisual.RightParticipantVisual,
-					x + signalVisual.MeasuredSize.Width - (signalVisual.RightParticipantVisual.HalfWidth));
-			}
-
-			y += c_InnerMargin;
-
-			foreach (var signalVisual in m_SignalVisuals)
-			{
-				signalVisual.Location = new Point(
-					signalVisual.LeftParticipantVisual.CenterX,
-					y);
-
-				signalVisual.Size = new Size(
-					signalVisual.RightParticipantVisual.CenterX - signalVisual.LeftParticipantVisual.CenterX,
-					signalVisual.MeasuredSize.Height);
-
-				y += signalVisual.Height;
-				y += c_InnerMargin;
-			}
-
-			foreach (var participantVisual in m_ParticipantVisuals.Values)
-			{
-				participantVisual.Height = participantVisual.NameSize.Height + y - participantVisual.Y;
-			}
-
+			Size = new Size(
+				ColumnWidths.Select(kvp => kvp.Value).Sum(),
+				RowHeights.Select(kvp => kvp.Value).Sum());
 		}
 
-		protected override Size MeasureCore(IGraphicContext graphicContext)
+		private float GetRequiredWidth(Cell cell, IGraphicContext graphicContext)
 		{
-			return base.MeasureCore(graphicContext).Plus(c_OuterMargin, c_OuterMargin);
+			float requiredWidth = 5;
+
+			if (cell.HasAspect<LifelineNameAspect>())
+			{
+				var lifelineNameAspect = cell.GetAspect<LifelineNameAspect>();
+				Size sizeOfName = graphicContext.MeasureText(lifelineNameAspect.Name);
+				requiredWidth = sizeOfName.Width + 10;
+			}
+
+			if (cell.HasAspect<LifelineAspect>())
+			{
+				var lifelineAspect = cell.GetAspect<LifelineAspect>();
+				requiredWidth =
+					40 +
+					Math.Max(lifelineAspect.EnterActivationLevel, lifelineAspect.LeaveActivationLevel) * 10;
+			}
+
+			return requiredWidth;
 		}
 
-		#endregion
-
-		#region Private Methods
-
-		private void EnsureParticipantIsAtLeastAt(ParticipantVisual participantVisual, float x)
+		private float GetRequiredHeight(Cell cell, IGraphicContext graphicContext)
 		{
-			float delta = x - participantVisual.X;
+			float requiredHeight = 5;
 
-			if (delta > 0)
+			if (cell.HasAspect<FragmentAspect>())
 			{
-				var rightNeighbors = m_ParticipantVisuals.Values
-					.Where(pv => pv.Index >= participantVisual.Index)
-					.OrderBy(pv => pv.Index);
+				var fragmentAspect = cell.GetAspect<FragmentAspect>();
+				Size titleSize = graphicContext.MeasureText(fragmentAspect.Title);
+				requiredHeight = titleSize.Height + 10;
+			}
 
-				foreach (var rightNeighbor in rightNeighbors)
+			if (cell.HasAspect<LifelineNameAspect>())
+			{
+				var lifelineNameAspect = cell.GetAspect<LifelineNameAspect>();
+				var sizeOfName = graphicContext.MeasureText(lifelineNameAspect.Name);
+				requiredHeight = sizeOfName.Height;
+			}
+
+			if (cell.HasAspect<SignalAspect>())
+			{
+				requiredHeight = 50;
+			}
+
+			return requiredHeight;
+		}
+
+		private void DrawCell(Cell cell, Point location, Size size, IGraphicContext graphicContext)
+		{
+			if (cell.HasAspect<LifelineNameAspect>())
+			{
+				var lifelineNameAspect = cell.GetAspect<LifelineNameAspect>();
+				var adjustedLocation = location;
+				var adjustedSize = size;
+
+				graphicContext.DrawRectangle(adjustedLocation, adjustedSize);
+				graphicContext.DrawText(
+					lifelineNameAspect.Name,
+					HorizontalAlignment.Center,
+					VerticalAlignment.Middle,
+					adjustedLocation,
+					adjustedSize);
+			}
+
+			if (cell.HasAspect<LifelineAspect>())
+			{
+				var lifelineAspect = cell.GetAspect<LifelineAspect>();
 				{
-					rightNeighbor.X += delta;
+					var from = new Point(location.X + size.Width / 2, location.Y);
+					var to = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+
+					float width = 2;
+					width += lifelineAspect.EnterActivationLevel * 2;
+
+					graphicContext.DrawLine(from, to, width);
+				}
+				{
+					var from = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+					var to = new Point(location.X + size.Width / 2, location.Y + size.Height);
+
+					float width = 2;
+					width += lifelineAspect.LeaveActivationLevel * 2;
+
+					graphicContext.DrawLine(from, to, width);
 				}
 			}
+
+			if (cell.HasAspect<SignalAspect>())
+			{
+				var signalAspect = cell.GetAspect<SignalAspect>();
+				switch (signalAspect.Type)
+				{
+					case SignalType.Inside:
+						{
+							Point from = new Point(location.X, location.Y + size.Height / 2);
+							Point to = new Point(location.X + size.Width, location.Y + size.Height / 2);
+
+							graphicContext.DrawLine(from, to, 2);
+						}
+						break;
+					case SignalType.Start:
+						if (signalAspect.Direction == SignalDirection.RightToLeft)
+						{
+							Point from = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+							Point to = new Point(location.X, location.Y + size.Height / 2);
+
+							graphicContext.DrawLine(from, to, 2);
+						}
+						else if (signalAspect.Direction == SignalDirection.LeftToRight)
+						{
+							Point from = new Point(location.X + size.Width, location.Y + size.Height / 2);
+							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+
+							graphicContext.DrawLine(from, to, 2);
+						}
+						break;
+					case SignalType.End:
+						if (signalAspect.Direction == SignalDirection.RightToLeft)
+						{
+							Point from = new Point(location.X + size.Width, location.Y + size.Height / 2);
+							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+
+							graphicContext.DrawLine(from, to, 2, LineOptions.ArrowEnd);
+						}
+						else if (signalAspect.Direction == SignalDirection.LeftToRight)
+						{
+							Point from = new Point(location.X, location.Y + size.Height / 2);
+							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+
+							graphicContext.DrawLine(from, to, 2, LineOptions.ArrowEnd);
+						}
+						break;
+					default:
+						throw new InvalidOperationException();
+						break;
+				}
+			}
+
+			if (cell.HasAspect<FragmentAspect>())
+			{
+				var fragmentAspect = cell.GetAspect<FragmentAspect>();
+				switch (fragmentAspect.Type)
+				{
+					case FragmentType.Top:
+					case FragmentType.Bottom:
+
+						Point from = new Point(location.X, location.Y + size.Height / 2);
+						Point to = new Point(location.X + size.Width, location.Y + size.Height / 2);
+						graphicContext.DrawLine(from, to, 1);
+
+						break;
+
+					case FragmentType.TopLeft:
+						Size titleSize = graphicContext.MeasureText(fragmentAspect.Title);
+
+						//graphicContext.DrawText(
+						//    fragmentAttribute.Title,
+						//    HorizontalAlignment.Left,
+						//    VerticalAlignment.Middle,
+						//    location, titleSize);
+
+						break;
+					case FragmentType.TopRight:
+						break;
+					case FragmentType.Left:
+						break;
+					case FragmentType.Right:
+						break;
+					case FragmentType.BottomLeft:
+						break;
+					case FragmentType.BottomRight:
+						break;
+					default:
+						break;
+				}
+			}
+
 		}
 
-		#endregion
+		protected override void DrawCore(IGraphicContext graphicContext)
+		{
+			float y = 0;
+
+			for (int row = 0; row < m_Grid.RowCount; row++)
+			{
+				float rowHeight = RowHeights[row];
+
+				float x = 0;
+				for (int column = 0; column < m_Grid.ColumnCount; column++)
+				{
+					float columnWidth = ColumnWidths[column];
+
+					Cell cell = m_Grid.GetCell(row, column);
+
+					graphicContext.DrawRectangle(new Point(x, y), new Size(columnWidth, rowHeight));
+
+					DrawCell(cell, new Point(x, y), new Size(columnWidth, rowHeight), graphicContext);
+
+					x += columnWidth;
+				}
+
+				y += rowHeight;
+			}
+		}
 	}
+
 }

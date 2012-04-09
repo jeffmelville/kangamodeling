@@ -35,21 +35,13 @@ namespace KangaModeling.Visuals
 		public Visual Parent
 		{
 			get { return m_Parent; }
-		}
-
-		public Size MeasuredSize
-		{
-			get;
-			private set;
+			set
+			{
+				value.AddChild(this);
+			}
 		}
 
 		public Point Location
-		{
-			get;
-			set;
-		}
-
-		public bool AutoSize
 		{
 			get;
 			set;
@@ -88,6 +80,12 @@ namespace KangaModeling.Visuals
 		public float CenterX
 		{
 			get { return X + Width / 2; }
+		}
+
+		public bool AutoSize
+		{
+			get;
+			set;
 		}
 
 		#endregion
@@ -136,15 +134,19 @@ namespace KangaModeling.Visuals
 
 		public void Layout(IGraphicContext graphicContext)
 		{
-			foreach (var child in Children)
-			{
-				child.Layout(graphicContext);
-			}
-
 			Arrange(graphicContext);
-			Measure(graphicContext);
+		}
 
-			if (AutoSize) Size = MeasuredSize;
+		public void Arrange(IGraphicContext graphicContext)
+		{
+			ArrangeCore(graphicContext);
+
+			if (AutoSize) Size = Measure(graphicContext);
+		}
+
+		public Size Measure(IGraphicContext graphicContext)
+		{
+			return MeasureCore(graphicContext);
 		}
 
 		public void Draw(IGraphicContext graphicContext)
@@ -170,35 +172,12 @@ namespace KangaModeling.Visuals
 
 		protected virtual Size MeasureCore(IGraphicContext graphicContext)
 		{
-			float maximumX = 0;
-			float maximumY = 0;
-
-			foreach (var child in Children)
-			{
-				maximumX = Math.Max(child.X + child.Width, maximumX);
-				maximumY = Math.Max(child.Y + child.Height, maximumY);
-			}
-
-			return new Size(maximumX, maximumY);
+			return Size.Empty;
 		}
 
 		protected virtual void DrawCore(IGraphicContext graphicContext)
 		{
 		}
-		#endregion
-
-		#region Private Methods
-
-		private void Arrange(IGraphicContext graphicContext)
-		{
-			ArrangeCore(graphicContext);
-		}
-
-		private void Measure(IGraphicContext graphicContext)
-		{
-			MeasuredSize = MeasureCore(graphicContext);
-		}
-
 		#endregion
 	}
 }

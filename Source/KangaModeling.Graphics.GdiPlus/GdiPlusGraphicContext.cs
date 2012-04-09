@@ -32,7 +32,7 @@ namespace KangaModeling.Graphics.GdiPlus
 		{
 			var rectangle = new RectangleF(location.ToPointF(), size.ToSizeF());
 
-			m_Graphics.FillRectangle(Brushes.LightBlue, rectangle);
+			m_Graphics.DrawRectangle(Pens.Gray, rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
 		}
 
 		public void DrawText(string text, HorizontalAlignment horizontalAlignment, VerticalAlignment verticalAlignment, Point location, Size size)
@@ -53,7 +53,7 @@ namespace KangaModeling.Graphics.GdiPlus
 
 		public void DrawLine(Point from, Point to, float width, LineOptions options = LineOptions.None)
 		{
-			using (var pen = new Pen(Brushes.Black, 2))
+			using (var pen = new Pen(Brushes.Black, width))
 			{
 				if (options.HasFlag(LineOptions.ArrowEnd))
 				{
