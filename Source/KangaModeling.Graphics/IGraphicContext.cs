@@ -10,6 +10,8 @@ namespace KangaModeling.Graphics
         void DrawText(string text, HorizontalAlignment horizontalAlignment, VerticalAlignment verticalAlignment, Point location, Size size);
 
 		void DrawLine(Point from, Point to, float width, LineOptions options = LineOptions.None);
+
+		void DrawArrow(Point from, Point to, float width, float arrowWidth, float arrowHeight);
 		        
         Size MeasureText(string text);
 

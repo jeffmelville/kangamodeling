@@ -55,15 +55,20 @@ namespace KangaModeling.Graphics.GdiPlus
 		{
 			using (var pen = new Pen(Brushes.Black, width))
 			{
-				if (options.HasFlag(LineOptions.ArrowEnd))
-				{
-					pen.CustomEndCap = new AdjustableArrowCap(7, 4, false);
-				}
-
 				if (options.HasFlag(LineOptions.Dashed))
 				{
 					pen.DashStyle = DashStyle.Dash;
 				}
+
+				m_Graphics.DrawLine(pen, from.ToPointF(), to.ToPointF());
+			}
+		}
+
+		public void DrawArrow(Point from, Point to, float width, float arrowWidth, float arrowHeight)
+		{
+			using (var pen = new Pen(Brushes.Black, width))
+			{
+				pen.CustomEndCap = new AdjustableArrowCap(arrowWidth, arrowHeight, false);
 
 				m_Graphics.DrawLine(pen, from.ToPointF(), to.ToPointF());
 			}

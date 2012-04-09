@@ -309,6 +309,18 @@ namespace KangaModeling.Visuals.SequenceDiagrams
 				{
 					Type = FragmentType.Top,
 				});
+				cell.AddAspect(new LifelineAspect()
+				{
+				});
+
+				Cell cell2 = m_Grid.GetCell(bottomRowIndex, column);
+				cell2.AddAspect(new FragmentAspect()
+				{
+					Type = FragmentType.Bottom,
+				});
+				cell2.AddAspect(new LifelineAspect()
+				{
+				});
 			}
 
 			foreach (var childFragment in fragment.Children)
@@ -369,8 +381,18 @@ namespace KangaModeling.Visuals.SequenceDiagrams
 			{
 				var lifelineAspect = cell.GetAspect<LifelineAspect>();
 				requiredWidth =
-					40 +
+					2 +
 					Math.Max(lifelineAspect.EnterActivationLevel, lifelineAspect.LeaveActivationLevel) * 10;
+			}
+
+			if (cell.HasAspect<SignalAspect>())
+			{
+				var signalAspect = cell.GetAspect<SignalAspect>();
+
+				if (signalAspect.Type == SignalType.End)
+				{
+					requiredWidth = Math.Max(requiredWidth, 10);
+				}
 			}
 
 			return requiredWidth;
@@ -396,7 +418,10 @@ namespace KangaModeling.Visuals.SequenceDiagrams
 
 			if (cell.HasAspect<SignalAspect>())
 			{
-				requiredHeight = 50;
+				const float arrowHeight = 20;
+				var signalAspect = cell.GetAspect<SignalAspect>();
+				var sizeOfName = graphicContext.MeasureText(signalAspect.Name);
+				requiredHeight = Math.Max(requiredHeight, arrowHeight + sizeOfName.Height);
 			}
 
 			return requiredHeight;
@@ -445,12 +470,15 @@ namespace KangaModeling.Visuals.SequenceDiagrams
 			if (cell.HasAspect<SignalAspect>())
 			{
 				var signalAspect = cell.GetAspect<SignalAspect>();
+
+				const float signalBottomDistance = 10;
+				
 				switch (signalAspect.Type)
 				{
 					case SignalType.Inside:
 						{
-							Point from = new Point(location.X, location.Y + size.Height / 2);
-							Point to = new Point(location.X + size.Width, location.Y + size.Height / 2);
+							Point from = new Point(location.X, location.Y + size.Height - signalBottomDistance);
+							Point to = new Point(location.X + size.Width, location.Y + size.Height - signalBottomDistance);
 
 							graphicContext.DrawLine(from, to, 2);
 						}
@@ -458,15 +486,15 @@ namespace KangaModeling.Visuals.SequenceDiagrams
 					case SignalType.Start:
 						if (signalAspect.Direction == SignalDirection.RightToLeft)
 						{
-							Point from = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
-							Point to = new Point(location.X, location.Y + size.Height / 2);
+							Point from = new Point(location.X + size.Width / 2, location.Y + size.Height - signalBottomDistance);
+							Point to = new Point(location.X, location.Y + size.Height - signalBottomDistance);
 
 							graphicContext.DrawLine(from, to, 2);
 						}
 						else if (signalAspect.Direction == SignalDirection.LeftToRight)
 						{
-							Point from = new Point(location.X + size.Width, location.Y + size.Height / 2);
-							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+							Point from = new Point(location.X + size.Width, location.Y + size.Height - signalBottomDistance);
+							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height - signalBottomDistance);
 
 							graphicContext.DrawLine(from, to, 2);
 						}
@@ -474,22 +502,34 @@ namespace KangaModeling.Visuals.SequenceDiagrams
 					case SignalType.End:
 						if (signalAspect.Direction == SignalDirection.RightToLeft)
 						{
-							Point from = new Point(location.X + size.Width, location.Y + size.Height / 2);
-							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+							Point from = new Point(location.X + size.Width, location.Y + size.Height - signalBottomDistance);
+							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height - signalBottomDistance);
 
-							graphicContext.DrawLine(from, to, 2, LineOptions.ArrowEnd);
+							graphicContext.DrawArrow(from, to, 2, 7, 4);
+
+							//graphicContext.DrawText(
+							//    signalAspect.Name,
+							//    HorizontalAlignment.Left, VerticalAlignment.Middle,
+							//    to.Offset(+7, -size.Height / 2), graphicContext.MeasureText(signalAspect.Name));
+
 						}
 						else if (signalAspect.Direction == SignalDirection.LeftToRight)
 						{
-							Point from = new Point(location.X, location.Y + size.Height / 2);
-							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height / 2);
+							Point from = new Point(location.X, location.Y + size.Height - signalBottomDistance);
+							Point to = new Point(location.X + size.Width / 2, location.Y + size.Height - signalBottomDistance);
 
-							graphicContext.DrawLine(from, to, 2, LineOptions.ArrowEnd);
+							graphicContext.DrawArrow(from, to, 2, 7, 4);
+
+							//Size nameSize = graphicContext.MeasureText(signalAspect.Name);
+
+							//graphicContext.DrawText(
+							//    signalAspect.Name,
+							//    HorizontalAlignment.Right, VerticalAlignment.Middle,
+							//    to.Offset(-7 - nameSize.Width, -size.Height / 2), nameSize);
 						}
 						break;
 					default:
 						throw new InvalidOperationException();
-						break;
 				}
 			}
 
@@ -510,11 +550,11 @@ namespace KangaModeling.Visuals.SequenceDiagrams
 					case FragmentType.TopLeft:
 						Size titleSize = graphicContext.MeasureText(fragmentAspect.Title);
 
-						//graphicContext.DrawText(
-						//    fragmentAttribute.Title,
-						//    HorizontalAlignment.Left,
-						//    VerticalAlignment.Middle,
-						//    location, titleSize);
+						graphicContext.DrawText(
+							fragmentAspect.Title,
+							HorizontalAlignment.Left,
+							VerticalAlignment.Middle,
+							location, titleSize);
 
 						break;
 					case FragmentType.TopRight:
