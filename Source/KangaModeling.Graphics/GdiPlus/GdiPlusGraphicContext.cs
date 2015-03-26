@@ -54,7 +54,7 @@ namespace KangaModeling.Graphics.GdiPlus
 
         public void DrawRectangle(Point location, Size size, Color color, LineStyle lineStyle)
         {
-            var rectangle = new RectangleF(location.ToPointF(), size.ToSizeF());
+            //var rectangle = new RectangleF(location.ToPointF(), size.ToSizeF());
 
             using (var pen = new Pen(color.ToColor()))
             {
@@ -198,17 +198,6 @@ namespace KangaModeling.Graphics.GdiPlus
 
         private void FillFontCollection()
         {
-            byte[] fontData = Fonts.BuxtonSketch;
-            IntPtr fontMemory = Marshal.AllocCoTaskMem(fontData.Length);
-            try
-            {
-                Marshal.Copy(fontData, 0, fontMemory, fontData.Length);
-                m_FontCollection.AddMemoryFont(fontMemory, fontData.Length);
-            }
-            finally
-            {
-                Marshal.FreeCoTaskMem(fontMemory);
-            }
         }
 
         private System.Drawing.Font CreateFont(Font font, float fontSize)
@@ -218,10 +207,6 @@ namespace KangaModeling.Graphics.GdiPlus
             {
                 case Font.SansSerif:
                     fontFamily = FontFamily.GenericSansSerif;
-                    break;
-
-                case Font.Handwritten:
-                    fontFamily = m_FontCollection.Families[0];
                     break;
 
                 default:

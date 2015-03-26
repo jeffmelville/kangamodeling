@@ -60,11 +60,5 @@ namespace KangaModeling.Graphics.GdiPlus.Resources {
             }
         }
         
-        internal static byte[] BuxtonSketch {
-            get {
-                object obj = ResourceManager.GetObject("BuxtonSketch", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
     }
 }
