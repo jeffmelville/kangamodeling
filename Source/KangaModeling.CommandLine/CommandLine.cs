@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Drawing.Imaging;
 using System.Linq;
 using CommandLine;
@@ -27,7 +28,21 @@ namespace KangaModeling.CommandLine
 
 		internal void Run(Options opts)
 		{
-			var arguments = new DiagramArguments(opts.Model, DiagramType.Class, DiagramStyle.Sketchy);
+			string model = "";
+			try
+			{
+				using (StreamReader sr = new StreamReader(opts.Model))
+				{
+					model = sr.ReadToEnd ();
+				}
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine("The model file could not be read.");
+				return;
+			}
+
+			var arguments = new DiagramArguments(model, DiagramType.Sequence, DiagramStyle.Classic);
 			var result = DiagramFactory.Create(arguments);
             if(result.Errors.Count() != 0)
             {
